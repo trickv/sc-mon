@@ -42,10 +42,12 @@ a missed run just means the next one diffs against an older state.
 
 ### Email delivery
 
-`msmtp` must be installed and `~/.msmtprc` must be configured. If either
-is missing, the digest is written to `data/pending-email.txt` and a warning
-is printed (cron's MAILTO will surface it). The script never silently
-drops a notification.
+`msmtp` must be installed and configured. msmtp will use whichever
+config it finds first (per-user `~/.msmtprc` or system `/etc/msmtprc`).
+If msmtp is missing or fails for any reason, the digest is written to
+`data/pending-email.txt` and a warning is printed to stderr (cron's
+MAILTO will surface it). The script never silently drops a
+notification.
 
 ## Flags
 

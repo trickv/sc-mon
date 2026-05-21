@@ -239,15 +239,10 @@ def build_email(body_text: str, n_changes: int) -> str:
 
 
 def send_email(message: str) -> None:
-    rc_path = Path.home() / ".msmtprc"
-    if not rc_path.exists():
-        DATA.mkdir(exist_ok=True)
-        PENDING_EMAIL.write_text(message)
-        print(
-            f"warning: ~/.msmtprc not found; digest written to {PENDING_EMAIL}",
-            file=sys.stderr,
-        )
-        return
+    """Hand the digest to msmtp. msmtp finds its own config (user or
+    /etc/msmtprc); we don't second-guess that. If msmtp is missing or
+    fails for any reason, fall back to writing data/pending-email.txt
+    with the failure surfaced on stderr so cron MAILTO sees it."""
     if not shutil.which("msmtp"):
         DATA.mkdir(exist_ok=True)
         PENDING_EMAIL.write_text(message)
