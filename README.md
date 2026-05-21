@@ -1,5 +1,7 @@
 # sc-mon
 
+<https://github.com/trickv/sc-mon>
+
 Hourly monitor for launches from Florida's Space Coast (Cape Canaveral SFS
 and Kennedy Space Center). Notifies on schedule changes by email, and logs
 the moment each SpaceX mission first gets a real T-0, so you can see how
