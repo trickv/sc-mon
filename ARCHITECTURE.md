@@ -62,6 +62,21 @@ because most runs produce no events at all — cron MAILTO would still
 send empty-output noise when stdout is empty (it doesn't, but explicit
 is better here).
 
+**24-hour notification horizon.** The user only wants emails about
+launches whose T-0 is more than 24 hours out. When they're physically
+at the Space Coast, imminent launches are something they're following
+live, and "REMOVED from schedule" the day after a successful flight is
+pure housekeeping. So `render_digest` filters by `_is_far_future(snap,
+now, 24)` — but `diff_launches` still appends every event to
+`history.jsonl`, because the analytical question (`--report`) needs the
+complete record including imminent transitions.
+
+A launch with terminal status (`Success` / `Failure` / `Partial
+Failure`) that drops off `/upcoming/` is also silently aged out at the
+diff level (no event recorded at all). The status_changed → Success
+notification was already sent at the moment the rocket actually flew;
+the follow-up "REMOVED from schedule" event would carry no information.
+
 The script renders one digest per run with at least one event, hands it
 to `msmtp -t`, and falls back to writing `data/pending-email.txt` with a
 stderr warning if `msmtp` is missing, unconfigured, or fails. The

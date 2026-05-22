@@ -19,9 +19,13 @@ far in advance SpaceX actually commits to a launch time.
     `first_pinned`, the first time precision becomes `SEC` or `MIN`
   - `status` changes (TBD/TBC/Go/Hold/...)
   - launches disappearing (flew, scrubbed off, or otherwise removed)
-- On any change, emails a plain-text digest via `msmtp -t` to
-  `trick@vanstaveren.us`.
-- Appends every observed event to `data/history.jsonl` for analysis.
+- On any change to a launch whose T-0 is **more than 24 hours away**,
+  emails a plain-text digest via `msmtp -t` to `trick@vanstaveren.us`.
+  Changes to imminent or already-flown launches still get logged but
+  don't generate an email — when you're on the Space Coast you're
+  following imminent launches in real time anyway.
+- Appends *every* observed event to `data/history.jsonl` regardless of
+  the 24h filter, so `--report` keeps a complete record.
 
 ## Install
 

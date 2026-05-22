@@ -34,6 +34,17 @@ USER_AGENT = "sc-mon/0.1 (trick@vanstaveren.us)"
 # net_precision abbrevs considered "pinned to a specific date/time".
 PINNED_PRECISIONS = {"SEC", "MIN"}
 
+# Launch statuses that mean the flight is over. Disappearance from
+# /upcoming/ after one of these is normal LL2 housekeeping, not a real
+# scheduling change, so we silently age the entry out instead of paging.
+TERMINAL_STATUSES = {"Success", "Failure", "Partial Failure"}
+
+# Notifications are only sent for launches whose T-0 is at least this far
+# out. Within this horizon the user is physically at the Space Coast and
+# is following imminent launches in real time. history.jsonl still
+# captures everything regardless — only the email digest is filtered.
+NOTIFY_MIN_HOURS_AHEAD = 24
+
 EMAIL_TO = "trick@vanstaveren.us"
 EMAIL_FROM = "sc-mon <trick@vanstaveren.us>"
 
@@ -172,7 +183,16 @@ def diff_launches(state: dict, fresh: list[dict], observed_at: str):
             continue
         if prev.get("gone_at"):
             continue  # already noted
-        # suppress noise for launches more than 7 days past their NET
+        # Silent age-out: a launch with terminal status (it flew) or whose
+        # NET is more than 7 days in the past is expected to vanish from
+        # /upcoming/ — that's just LL2 housekeeping, not a real change.
+        # The user already got the status_changed notification when the
+        # rocket actually launched; the follow-up "REMOVED" is noise.
+        if prev.get("status") in TERMINAL_STATUSES:
+            entry = dict(prev)
+            entry["gone_at"] = observed_at
+            new_state[uid] = entry
+            continue
         try:
             net = dt.datetime.fromisoformat((prev.get("net") or "").replace("Z", "+00:00"))
             age = (dt.datetime.now(dt.timezone.utc) - net).total_seconds()
@@ -197,15 +217,32 @@ def diff_launches(state: dict, fresh: list[dict], observed_at: str):
     return new_state, events, diffs
 
 
+def _is_far_future(snap: dict, now_dt: dt.datetime, hours: int) -> bool:
+    """True if the snapshot's net is at least `hours` ahead of now_dt.
+    Unknown/unparseable net counts as far-future (worth notifying)."""
+    net = snap.get("net")
+    if not net:
+        return True
+    try:
+        t0 = dt.datetime.fromisoformat(net.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    return (t0 - now_dt).total_seconds() > hours * 3600
+
+
 def render_digest(diffs, observed_at: str) -> str | None:
     if not diffs:
         return None
+    now_dt = dt.datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    digestable = [d for d in diffs if _is_far_future(d[0], now_dt, NOTIFY_MIN_HOURS_AHEAD)]
+    if not digestable:
+        return None
     lines = [
-        f"sc-mon — {len(diffs)} change(s) observed at {observed_at}",
+        f"sc-mon — {len(digestable)} change(s) observed at {observed_at} (only T-0 > {NOTIFY_MIN_HOURS_AHEAD}h shown)",
         f"Source: {API_URL}",
         "",
     ]
-    for snap, field_changes, flags in diffs:
+    for snap, field_changes, flags in digestable:
         header = f"{snap.get('name')}  ({snap.get('lsp') or '?'}, {snap.get('pad') or '?'} @ {snap.get('location') or '?'})"
         lines.append(header)
         if "appeared" in flags:
@@ -297,11 +334,16 @@ def cmd_run(args) -> int:
     save_state(new_state)
     append_history(events)
     if digest is None:
+        if diffs:
+            print(f"observed {len(diffs)} change(s), all within {NOTIFY_MIN_HOURS_AHEAD}h of T-0; no email sent.")
         return 0
-    n_changes = len(diffs)
+    # render_digest filtered to far-future entries; reuse the same predicate
+    # to count for the subject line.
+    now_dt = dt.datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    n_changes = sum(1 for d in diffs if _is_far_future(d[0], now_dt, NOTIFY_MIN_HOURS_AHEAD))
     email = build_email(digest, n_changes)
     send_email(email)
-    print(f"sent digest: {n_changes} change(s).")
+    print(f"sent digest: {n_changes} change(s) (T-0 > {NOTIFY_MIN_HOURS_AHEAD}h).")
     return 0
 
 

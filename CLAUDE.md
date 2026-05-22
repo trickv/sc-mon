@@ -48,7 +48,18 @@ ahead does SpaceX really commit?"
   the existing `history.jsonl` will produce different lead times).
 - First-ever run is a special case: state is empty, every launch is
   technically "appeared", so the script seeds silently and emails
-  nothing. Subsequent runs always email when there's a change.
+  nothing. Subsequent runs email when there's a change to a launch
+  whose T-0 is more than `NOTIFY_MIN_HOURS_AHEAD` (24h) in the future.
+- The 24h horizon filter lives in `render_digest`, not in
+  `diff_launches`. `history.jsonl` always captures every event so
+  `--report` has the full record; only the email is filtered. Do not
+  move the filter into `diff_launches` — that would corrupt the
+  analytical dataset.
+- Terminal-status disappearance (Success/Failure/Partial Failure that
+  drops off `/upcoming/`) is suppressed at the diff level — no event,
+  no history entry, just a silent `gone_at` stamp. The
+  `status_changed → Success` event already exists from the moment the
+  rocket flew; the follow-up "REMOVED" carries no new info.
 
 ## File layout
 
