@@ -34,11 +34,6 @@ USER_AGENT = "sc-mon/0.1 (trick@vanstaveren.us)"
 # net_precision abbrevs considered "pinned to a specific date/time".
 PINNED_PRECISIONS = {"SEC", "MIN"}
 
-# Launch statuses that mean the flight is over. Disappearance from
-# /upcoming/ after one of these is normal LL2 housekeeping, not a real
-# scheduling change, so we silently age the entry out instead of paging.
-TERMINAL_STATUSES = {"Success", "Failure", "Partial Failure"}
-
 # Notifications are only sent for launches whose T-0 is at least this far
 # out. Within this horizon the user is physically at the Space Coast and
 # is following imminent launches in real time. history.jsonl still
@@ -177,37 +172,21 @@ def diff_launches(state: dict, fresh: list[dict], observed_at: str):
         if field_changes or flags:
             diffs.append((snap, field_changes, flags))
 
-    # disappeared: in state but not in this response
+    # disappeared: in state but not in this response. Always log to
+    # history.jsonl — terminal-status and stale-past-NET launches
+    # included — so --report has the full record. Email suppression
+    # happens later at the render layer via the 24h horizon filter,
+    # which naturally drops anything with NET in the past anyway.
     for uid, prev in list(state.items()):
         if uid in seen_ids:
             continue
         if prev.get("gone_at"):
-            continue  # already noted
-        # Silent age-out: a launch with terminal status (it flew) or whose
-        # NET is more than 7 days in the past is expected to vanish from
-        # /upcoming/ — that's just LL2 housekeeping, not a real change.
-        # The user already got the status_changed notification when the
-        # rocket actually launched; the follow-up "REMOVED" is noise.
-        if prev.get("status") in TERMINAL_STATUSES:
-            entry = dict(prev)
-            entry["gone_at"] = observed_at
-            new_state[uid] = entry
-            continue
-        try:
-            net = dt.datetime.fromisoformat((prev.get("net") or "").replace("Z", "+00:00"))
-            age = (dt.datetime.now(dt.timezone.utc) - net).total_seconds()
-            stale = age > 7 * 24 * 3600
-        except (TypeError, ValueError):
-            stale = False
-        if stale:
-            entry = dict(prev)
-            entry["gone_at"] = observed_at
-            new_state[uid] = entry
-            continue
+            continue  # already noted on a prior run
         events.append({
             "observed_at": observed_at, "event": "disappeared",
             "id": uid, "name": prev.get("name"), "lsp": prev.get("lsp"),
             "last_net": prev.get("net"),
+            "last_status": prev.get("status"),
         })
         entry = dict(prev)
         entry["gone_at"] = observed_at
